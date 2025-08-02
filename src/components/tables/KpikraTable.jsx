@@ -1,207 +1,216 @@
-import React, { useEffect, useState } from "react";
-import {
-  Video,
-  Users,
-  MessageSquare,
-  Target,
-  Briefcase,
-  CheckSquare,
-  Users2,
-  Database,
-  Link,
-  PlayCircle,
-  RefreshCw,
-} from "lucide-react";
+import React, { useEffect, useState, useRef, useMemo, useCallback } from "react";
+import { Briefcase, CheckSquare, Target, Users, MessageSquare, Database, Link, AlertCircle, PlayCircle } from "lucide-react";
 
-const STATICKHEADERS = [
-  "System Name",
-  "Task Name",
-  "Desciption",
-  "Training Video Link",
-];
-
-const KpikraTable = () => {
+const KpikraTable = ({ designation, isAdmin = false, isEmpty = false }) => {
   const [pendingTasks, setPendingTasks] = useState([]);
-  const [isLoading, setIsLoading] = useState(true);
+  const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState(null);
+  const abortControllerRef = useRef(null);
 
-  const SPREADSHEET_ID = "1h8lu66_hZlHm3tkaUhypmM_HhKP2WCaCfOPmAsisqKY";
+  const SPREADSHEET_ID = "1GHb1qDJ1ZaUFzIrb1ezXqYd-6ePFAAe4upYotiP92JY";
 
-  const fetchPendingData = async () => {
+  const fetchPendingData = useCallback(async (designationToFetch) => {
+    if (!designationToFetch) {
+      setPendingTasks([]);
+      return;
+    }
+
     try {
+      if (abortControllerRef.current) {
+        abortControllerRef.current.abort();
+      }
+
+      abortControllerRef.current = new AbortController();
       setIsLoading(true);
       setError(null);
-
-      const response = await fetch(
-        `https://docs.google.com/spreadsheets/d/${SPREADSHEET_ID}/gviz/tq?tqx=out:json&sheet=Dashboard`
-      );
-
+      
+      const url = `https://docs.google.com/spreadsheets/d/${SPREADSHEET_ID}/gviz/tq?tqx=out:json&sheet=${encodeURIComponent(designationToFetch)}`;
+      
+      const response = await fetch(url, {
+        signal: abortControllerRef.current.signal
+      });
+      
       if (!response.ok) {
-        throw new Error(`Failed to fetch data: ${response.status}`);
+        throw new Error(`HTTP error! status: ${response.status}`);
       }
 
       const text = await response.text();
-      const jsonStart = text.indexOf("{");
-      const jsonEnd = text.lastIndexOf("}");
+      const jsonStart = text.indexOf('{');
+      const jsonEnd = text.lastIndexOf('}') + 1;
+      const json = JSON.parse(text.substring(jsonStart, jsonEnd));
 
-      if (jsonStart === -1 || jsonEnd === -1) {
-        throw new Error("Invalid response format");
-      }
-
-      const data = JSON.parse(text.substring(jsonStart, jsonEnd + 1));
-
-      if (!data.table || !data.table.rows) {
-        throw new Error("No table data found");
-      }
-
-      const items = data.table.rows.map((row, rowIndex) => {
-        const itemObj = {
+      const items = json.table.rows.map((row, rowIndex) => {
+        const itemObj = { 
           _id: `${rowIndex}-${Math.random().toString(36).substr(2, 9)}`,
-          _rowIndex: rowIndex + 1,
+          _rowIndex: rowIndex + 1
         };
-
         if (row.c) {
           row.c.forEach((cell, i) => {
             itemObj[`col${i}`] = cell?.v ?? cell?.f ?? "";
           });
         }
-
         return itemObj;
       });
 
       setPendingTasks(items);
     } catch (err) {
-      console.error("Error fetching data:", err);
-      setError(err.message);
+      if (err.name !== 'AbortError') {
+        let errorMessage = err.message;
+        
+        if (err.message.includes('Failed to fetch')) {
+          errorMessage = 'Network error - please check your internet connection';
+        } else if (err.message.includes('404')) {
+          errorMessage = 'Data not found for your designation';
+        } else if (err.message.includes('403')) {
+          errorMessage = 'You do not have permission to view this data';
+        }
+        
+        setError(errorMessage);
+      }
     } finally {
       setIsLoading(false);
+      abortControllerRef.current = null;
     }
-  };
-
-  useEffect(() => {
-    fetchPendingData();
   }, []);
 
-  // Add this new useEffect to log row 6 data
   useEffect(() => {
-    if (pendingTasks.length >= 6) {
-      const row6 = pendingTasks[5];
+    if (isEmpty || !designation) {
+      setPendingTasks([]);
+      setError(null);
+      setIsLoading(false);
+      return;
     }
-  }, [pendingTasks]);
 
-  // Get row 6 data (index 5 because arrays are 0-indexed)
-  const row6Data = pendingTasks.length > 2 ? pendingTasks[2] : {};
-  // Get first row data
-  const firstRowData = pendingTasks.length > 0 ? pendingTasks[0] : {};
-  // For communication team - assuming column B (col1) contains team members
-  const communicationTeam = row6Data.col1
-    ? row6Data.col1.split(",").map((item) => item.trim())
-    : ["No data available"];
+    fetchPendingData(designation);
 
-  const tableData = pendingTasks.length > 4 ? pendingTasks.slice(4) : [];
-  // For communication process - assuming column C (col2) contains instructions
+    return () => {
+      if (abortControllerRef.current) {
+        abortControllerRef.current.abort();
+      }
+    };
+  }, [designation, fetchPendingData, isEmpty]);
+
+
+  const { firstRowData, row6Data, tableData } = useMemo(() => ({
+    firstRowData: pendingTasks[0] || {},
+    row6Data: pendingTasks[5] || {},
+    tableData: pendingTasks.slice(4) || []
+  }), [pendingTasks]);
+
+  const communicationTeam = useMemo(() => (
+    row6Data.col1 ? row6Data.col1.split(",").map(item => item.trim()) : []
+  ), [row6Data]);
+
   const howToCommunicate = row6Data.col2 || "No data available";
-
-  // For key person - assuming column A (col0) contains the name
   const keyPerson = row6Data.col0 || "No data available";
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center min-h-[400px]">
+        <div className="text-center">
+          <div className="w-16 h-16 border-4 border-blue-600 border-t-transparent rounded-full animate-spin mx-auto"></div>
+          <p className="mt-4 text-gray-600">Loading data...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="bg-red-50 border-l-4 border-red-500 p-4 rounded-lg">
+        <div className="flex items-start gap-3">
+          <AlertCircle className="w-5 h-5 text-red-500 mt-0.5 flex-shrink-0" />
+          <div>
+            <h3 className="font-medium text-red-800">Error Loading Data</h3>
+            <p className="text-sm text-red-700 mt-1">{error}</p>
+            <button 
+              onClick={() => fetchPendingData(designation)}
+              className="mt-2 text-sm text-red-600 hover:text-red-800 underline"
+            >
+              Try Again
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6">
-      <div className="flex justify-end">
-        <button
-          onClick={fetchPendingData}
-          disabled={isLoading}
-          className="flex items-center gap-2 px-4 py-2 bg-blue-50 hover:bg-blue-100 text-blue-600 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-        >
-          <RefreshCw className={`w-4 h-4 ${isLoading ? "animate-spin" : ""}`} />
-          <span className="text-sm font-medium">Refresh All Data</span>
-        </button>
-      </div>
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Role Information Card */}
         <div className="bg-gradient-to-br from-blue-50 to-indigo-50 rounded-xl shadow-sm border border-blue-100 p-6 transform transition-all hover:scale-[1.02]">
           <div className="flex items-center gap-3 mb-4">
             <Briefcase className="w-6 h-6 text-blue-600" />
-            <h2 className="text-lg font-semibold text-gray-800">
-              Role Details
-            </h2>
+            <h2 className="text-lg font-semibold text-gray-800">Role Details</h2>
           </div>
           <div className="bg-white rounded-lg p-4 border border-blue-100">
-            <h3 className="text-sm font-medium text-blue-600 mb-2">
-              Actual Role
-            </h3>
-            <p className="text-gray-800">
-              {firstRowData.col1 || "No data available"}
-            </p>
+            <h3 className="text-sm font-medium text-blue-600 mb-2">Actual Role</h3>
+            <p className="text-gray-800">{firstRowData.col1 || "No data available"}</p>
           </div>
         </div>
+
         {/* Tasks Card */}
         <div className="bg-gradient-to-br from-emerald-50 to-green-50 rounded-xl shadow-sm border border-emerald-100 p-6 transform transition-all hover:scale-[1.02]">
           <div className="flex items-center gap-3 mb-4">
             <CheckSquare className="w-6 h-6 text-emerald-600" />
-            <h2 className="text-lg font-semibold text-gray-800">
-              Task Overview
-            </h2>
+            <h2 className="text-lg font-semibold text-gray-800">Task Overview</h2>
           </div>
           <div className="bg-white rounded-lg p-6 border border-emerald-100 flex items-center justify-center">
             <div className="text-center">
-              <p className="text-4xl font-bold text-emerald-600">
-                {firstRowData.col3 || "0"}
-              </p>
+              <p className="text-4xl font-bold text-emerald-600">{firstRowData.col3 || "0"}</p>
+              <p className="text-sm text-gray-600 mt-1">Total Tasks</p>
             </div>
           </div>
         </div>
-        {/* Scoring Card */}
+
+        {/* Performance Scoring Card */}
         <div className="bg-gradient-to-br from-purple-50 to-pink-50 rounded-xl shadow-sm border border-purple-100 p-6 transform transition-all hover:scale-[1.02]">
           <div className="flex items-center gap-3 mb-4">
             <Target className="w-6 h-6 text-purple-600" />
-            <h2 className="text-lg font-semibold text-gray-800">
-              Performance Scoring
-            </h2>
+            <h2 className="text-lg font-semibold text-gray-800">Performance Scoring</h2>
           </div>
           <div className="space-y-4">
-            <a
-              href={firstRowData.col4 || "#"}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="block bg-white rounded-lg p-4 border border-purple-100 hover:bg-purple-50 transition-colors group"
-            >
-              <div className="flex items-center gap-2">
-                <Video className="w-4 h-4 text-purple-600 group-hover:scale-110 transition-transform" />
-                <span className="text-sm font-medium text-purple-600">
-                  How Scoring Works
-                </span>
-              </div>
-            </a>
-            <a
-              href={firstRowData.col5 || "#"}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="block bg-white rounded-lg p-4 border border-purple-100 hover:bg-purple-50 transition-colors group"
-            >
-              <div className="flex items-center gap-2">
-                <Video className="w-4 h-4 text-purple-600 group-hover:scale-110 transition-transform" />
-                <span className="text-sm font-medium text-purple-600">
-                  How To Score Better
-                </span>
-              </div>
-            </a>
+            {firstRowData.col4 && (
+              <a
+                href={firstRowData.col4}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="block bg-white rounded-lg p-4 border border-purple-100 hover:bg-purple-50 transition-colors group"
+              >
+                <div className="flex items-center gap-2">
+                  <PlayCircle className="w-4 h-4 text-purple-600 group-hover:scale-110 transition-transform" />
+                  <span className="text-sm font-medium text-purple-600">How Scoring Works</span>
+                </div>
+              </a>
+            )}
+            {firstRowData.col5 && (
+              <a
+                href={firstRowData.col5}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="block bg-white rounded-lg p-4 border border-purple-100 hover:bg-purple-50 transition-colors group"
+              >
+                <div className="flex items-center gap-2">
+                  <PlayCircle className="w-4 h-4 text-purple-600 group-hover:scale-110 transition-transform" />
+                  <span className="text-sm font-medium text-purple-600">How To Score Better</span>
+                </div>
+              </a>
+            )}
           </div>
         </div>
-        {/* Communication Section - Full Width */}
+
+        {/* Communication Section */}
         <div className="lg:col-span-3 grid grid-cols-1 lg:grid-cols-2 gap-6">
           {/* Team Communication Card */}
           <div className="bg-gradient-to-br from-amber-50 to-orange-50 rounded-xl shadow-sm border border-amber-100 p-6">
             <div className="flex items-center gap-3 mb-4">
-              <Users2 className="w-6 h-6 text-amber-600" />
-              <h2 className="text-lg font-semibold text-gray-800">
-                Team Communication
-              </h2>
+              <Users className="w-6 h-6 text-amber-600" />
+              <h2 className="text-lg font-semibold text-gray-800">Team Communication</h2>
             </div>
-            <div className="space-y-4">
-              <div className="bg-white rounded-lg p-4 border border-amber-100">
-                <h3 className="text-sm font-medium text-amber-600 mb-3">
-                  Communication Team
-                </h3>
+            <div className="bg-white rounded-lg p-4 border border-amber-100">
+              <h3 className="text-sm font-medium text-amber-600 mb-3">Communication Team</h3>
+              {communicationTeam.length > 0 ? (
                 <ul className="space-y-2">
                   {communicationTeam.map((member, index) => (
                     <li
@@ -213,7 +222,9 @@ const KpikraTable = () => {
                     </li>
                   ))}
                 </ul>
-              </div>
+              ) : (
+                <p className="text-gray-500">No team members available</p>
+              )}
             </div>
           </div>
 
@@ -221,21 +232,15 @@ const KpikraTable = () => {
           <div className="bg-gradient-to-br from-cyan-50 to-blue-50 rounded-xl shadow-sm border border-cyan-100 p-6">
             <div className="flex items-center gap-3 mb-4">
               <MessageSquare className="w-6 h-6 text-cyan-600" />
-              <h2 className="text-lg font-semibold text-gray-800">
-                Communication Process
-              </h2>
+              <h2 className="text-lg font-semibold text-gray-800">Communication Process</h2>
             </div>
             <div className="space-y-4">
               <div className="bg-white rounded-lg p-4 border border-cyan-100">
-                <h3 className="text-sm font-medium text-cyan-600 mb-2">
-                  How to Communicate
-                </h3>
+                <h3 className="text-sm font-medium text-cyan-600 mb-2">How to Communicate</h3>
                 <p className="text-gray-700">{howToCommunicate}</p>
               </div>
               <div className="bg-white rounded-lg p-4 border border-cyan-100">
-                <h3 className="text-sm font-medium text-cyan-600 mb-2">
-                  Key Person
-                </h3>
+                <h3 className="text-sm font-medium text-cyan-600 mb-2">Key Person</h3>
                 <div className="flex items-center gap-3">
                   <div className="w-10 h-10 rounded-full bg-cyan-100 flex items-center justify-center">
                     <Users className="w-5 h-5 text-cyan-600" />
@@ -247,14 +252,12 @@ const KpikraTable = () => {
           </div>
         </div>
 
-        {/* Systems Table - Full Width */}
+        {/* Systems Table */}
         <div className="lg:col-span-3 bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
           <div className="bg-gradient-to-r from-gray-50 to-white p-6 border-b border-gray-200">
             <div className="flex items-center gap-3">
               <Database className="w-6 h-6 text-gray-600" />
-              <h2 className="text-lg font-semibold text-gray-800">
-                Systems and Resources
-              </h2>
+              <h2 className="text-lg font-semibold text-gray-800">Systems and Resources</h2>
             </div>
           </div>
 
@@ -262,37 +265,32 @@ const KpikraTable = () => {
             <table className="min-w-full divide-y divide-gray-200">
               <thead>
                 <tr className="bg-gray-50">
-                  {STATICKHEADERS.map((header, index) => (
-                    <th
-                      key={index}
-                      className="px-6 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
-                    >
-                      {header}
-                    </th>
-                  ))}
+                  <th className="px-6 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    System Name
+                  </th>
+                  <th className="px-6 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Task Name
+                  </th>
+                  <th className="px-6 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Description
+                  </th>
+                  <th className="px-6 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Links
+                  </th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-gray-200 bg-white">
+              <tbody className="divide-y divide-gray-200">
                 {tableData.length > 0 ? (
                   tableData.map((row, index) => (
-                    <tr
-                      key={index}
-                      className="hover:bg-gray-50 transition-colors"
-                    >
+                    <tr key={index} className="hover:bg-gray-50 transition-colors">
                       <td className="px-6 py-4">
-                        <div className="text-sm font-medium text-gray-900">
-                          {row.col0 || "N/A"}
-                        </div>
+                        <div className="text-sm font-medium text-gray-900">{row.col0 || "N/A"}</div>
                       </td>
                       <td className="px-6 py-4">
-                        <div className="text-sm text-gray-700">
-                          {row.col1 || "N/A"}
-                        </div>
+                        <div className="text-sm text-gray-700">{row.col1 || "N/A"}</div>
                       </td>
                       <td className="px-6 py-4">
-                        <div className="text-sm text-gray-700">
-                          {row.col2 || "N/A"}
-                        </div>
+                        <div className="text-sm text-gray-700">{row.col2 || "N/A"}</div>
                       </td>
                       <td className="px-6 py-4">
                         <div className="flex items-center gap-4">
@@ -304,9 +302,7 @@ const KpikraTable = () => {
                               className="flex items-center gap-1 text-blue-600 hover:text-blue-800 transition-colors"
                             >
                               <Link className="w-4 h-4" />
-                              <span className="text-sm font-medium">
-                                System
-                              </span>
+                              <span className="text-sm font-medium">System</span>
                             </a>
                           )}
                           {row.col4 && (
@@ -317,9 +313,7 @@ const KpikraTable = () => {
                               className="flex items-center gap-1 text-emerald-600 hover:text-emerald-800 transition-colors"
                             >
                               <Database className="w-4 h-4" />
-                              <span className="text-sm font-medium">
-                                Dashboard
-                              </span>
+                              <span className="text-sm font-medium">Dashboard</span>
                             </a>
                           )}
                           {row.col5 && (
@@ -330,9 +324,7 @@ const KpikraTable = () => {
                               className="flex items-center gap-1 text-purple-600 hover:text-purple-800 transition-colors"
                             >
                               <PlayCircle className="w-4 h-4" />
-                              <span className="text-sm font-medium">
-                                Training
-                              </span>
+                              <span className="text-sm font-medium">Training</span>
                             </a>
                           )}
                         </div>
@@ -341,13 +333,8 @@ const KpikraTable = () => {
                   ))
                 ) : (
                   <tr>
-                    <td
-                      colSpan={STATICKHEADERS.length}
-                      className="px-6 py-4 text-center"
-                    >
-                      <div className="text-sm text-gray-500">
-                        {isLoading ? "Loading data..." : "No data available"}
-                      </div>
+                    <td colSpan="4" className="px-6 py-4 text-center text-sm text-gray-500">
+                      No data available
                     </td>
                   </tr>
                 )}
@@ -360,4 +347,4 @@ const KpikraTable = () => {
   );
 };
 
-export default KpikraTable;
+export default React.memo(KpikraTable);

@@ -1,10 +1,9 @@
 "use client";
-import TasksTable from "../../components/tables/TasksTable";
 import { useState, useEffect } from "react";
 import { toast, Toaster } from "react-hot-toast";
 import { User } from "lucide-react";
+import TodayTasksTable from "../../components/tables/TodayTasktable";
 
-// Utility function to convert Google Drive URLs
 const convertGoogleDriveImageUrl = (url) => {
   if (!url) return null;
 
@@ -25,8 +24,8 @@ const convertGoogleDriveImageUrl = (url) => {
   return url;
 };
 
-const AdminPendingTasks = () => {
-  const [pendingTasks, setPendingTasks] = useState([]);
+const AdminTodayTasks = () => {
+  const [todayTasks, setTodayTasks] = useState([]);
   const [searchTerm, setSearchTerm] = useState("");
   const [filterType, setFilterType] = useState("col23");
   const [filterValue, setFilterValue] = useState("");
@@ -35,9 +34,9 @@ const AdminPendingTasks = () => {
   const [showPersonDropdown, setShowPersonDropdown] = useState(false);
 
   const DISPLAY_COLUMNS = ["col2", "col3", "col4", "col14"];
-  const SPREADSHEET_ID = "1KnflbDnevxgzPqsBfsduPWS75SiQq_l2V5lip6_KMog";
+  const SPREADSHEET_ID = "1szwMeIermOLKS5qJV3C6DXOqp3RdlagF46-JkXhMjKo";
 
-  const fetchPendingData = async () => {
+  const fetchTodayData = async () => {
     try {
       setIsLoading(true);
       setError(null);
@@ -60,7 +59,6 @@ const AdminPendingTasks = () => {
           });
         }
 
-        // Process col23 for image and name
         const rawValue = String(itemObj.col23 || "").replace(/^"|"$/g, "");
         let imageUrl = "";
         let userName = "";
@@ -93,8 +91,8 @@ const AdminPendingTasks = () => {
         })
       );
 
-      setPendingTasks(filteredItems);
-      toast.success(`Fetched ${filteredItems.length} pending tasks`);
+      setTodayTasks(filteredItems);
+     
     } catch (err) {
       console.error("❌ Error fetching pending data:", err);
       setError(err.message);
@@ -105,14 +103,13 @@ const AdminPendingTasks = () => {
   };
 
   useEffect(() => {
-    fetchPendingData();
+    fetchTodayData();
   }, []);
 
-  // Get unique person names with their images from col23
   const getPersonNamesWithImages = () => {
     const personMap = new Map();
 
-    pendingTasks.forEach((item) => {
+    todayTasks.forEach((item) => {
       const combinedValue = item._combinedValue;
       if (combinedValue && combinedValue.trim() !== "") {
         if (!personMap.has(combinedValue)) {
@@ -130,10 +127,9 @@ const AdminPendingTasks = () => {
     );
   };
 
-  // Get unique FMS names
   const getFMSNames = () => {
     const fmsNames = new Set();
-    pendingTasks.forEach((item) => {
+    todayTasks.forEach((item) => {
       const fmsName = String(item.col2 || "").trim();
       if (fmsName !== "") {
         fmsNames.add(fmsName);
@@ -142,7 +138,7 @@ const AdminPendingTasks = () => {
     return Array.from(fmsNames).sort();
   };
 
-  const filteredTasks = pendingTasks.filter((item) => {
+  const filteredTasks = todayTasks.filter((item) => {
     const term = searchTerm.toLowerCase();
     const matchesSearch = DISPLAY_COLUMNS.some((colId) =>
       String(item[colId] || "")
@@ -166,21 +162,21 @@ const AdminPendingTasks = () => {
   );
 
   return (
-    <div className="space-y-6">
-      <Toaster />
+    <div className="space-y-4" style={{ height: "calc(110vh - 90px)", marginTop: "-40px" }}>
+    
 
       {/* Header */}
-      <div className="flex justify-between items-center">
+      <div className="flex justify-between items-center pt-2">
         <h1 className="text-2xl font-bold text-gray-800">Pending Tasks</h1>
         <div className="text-sm bg-yellow-100 text-yellow-800 px-3 py-1 rounded-full">
-          {filteredTasks.length} Pending Task
+          {filteredTasks.length} Today Task
           {filteredTasks.length !== 1 ? "s" : ""}
         </div>
       </div>
 
       {/* Search + Inline Filter */}
-      <div className="bg-white p-4 rounded border space-y-4">
-        <div className="grid md:grid-cols-3 gap-4">
+      <div className="bg-white p-3 rounded border space-y-3 relative">
+        <div className="grid md:grid-cols-3 gap-3">
           {/* Search Input */}
           <input
             type="text"
@@ -208,9 +204,8 @@ const AdminPendingTasks = () => {
                         e.target.src = "";
                         e.target.className =
                           "w-6 h-6 bg-gray-200 rounded-full mr-2 flex items-center justify-center";
-                        e.target.innerHTML = `<span class="text-xs">${
-                          selectedPerson.displayName?.charAt(0) || "?"
-                        }</span>`;
+                        e.target.innerHTML = `<span class="text-xs">${selectedPerson.displayName?.charAt(0) || "?"
+                          }</span>`;
                       }}
                     />
                   ) : (
@@ -226,9 +221,8 @@ const AdminPendingTasks = () => {
                 <span>All Persons</span>
               )}
               <svg
-                className={`w-4 h-4 ml-2 transition-transform ${
-                  showPersonDropdown ? "rotate-180" : ""
-                }`}
+                className={`w-4 h-4 ml-2 transition-transform ${showPersonDropdown ? "rotate-180" : ""
+                  }`}
                 fill="none"
                 stroke="currentColor"
                 viewBox="0 0 24 24"
@@ -244,7 +238,7 @@ const AdminPendingTasks = () => {
             </div>
 
             {showPersonDropdown && (
-              <div className="absolute z-10 mt-1 w-full bg-white border border-gray-300 rounded-md shadow-lg max-h-60 overflow-auto">
+              <div className="absolute z-50 mt-1 w-full bg-white border border-gray-300 rounded-md shadow-lg max-h-60 overflow-auto">
                 <div
                   className="p-2 hover:bg-gray-100 cursor-pointer"
                   onClick={() =>
@@ -272,9 +266,8 @@ const AdminPendingTasks = () => {
                           e.target.src = "";
                           e.target.className =
                             "w-6 h-6 bg-gray-200 rounded-full mr-2 flex items-center justify-center";
-                          e.target.innerHTML = `<span class="text-xs">${
-                            person.displayName?.charAt(0) || "?"
-                          }</span>`;
+                          e.target.innerHTML = `<span class="text-xs">${person.displayName?.charAt(0) || "?"
+                            }</span>`;
                         }}
                       />
                     ) : (
@@ -321,20 +314,19 @@ const AdminPendingTasks = () => {
         <div className="bg-white rounded-lg border shadow-sm p-6 text-center">
           <p className="text-red-500">Error: {error}</p>
           <button
-            onClick={fetchPendingData}
+            onClick={fetchTodayData}
             className="mt-2 px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600"
           >
             Retry
           </button>
         </div>
       ) : filteredTasks.length > 0 ? (
-        <div className="bg-white rounded-lg border shadow-sm p-6">
-          <div className="mb-4">
+        <div className="bg-white rounded-lg border shadow-sm p-4 relative">
+          <div className="mb-3">
             <h2 className="text-lg font-semibold text-gray-800">
               {filterValue
-                ? `Showing ${filterType === "col2" ? "FMS Name" : "Person"}: ${
-                    selectedPerson?.displayName || filterValue
-                  }`
+                ? `Showing ${filterType === "col2" ? "FMS Name" : "Person"}: ${selectedPerson?.displayName || filterValue
+                }`
                 : "All Tasks"}
             </h2>
             <p className="text-sm text-gray-500">
@@ -343,8 +335,8 @@ const AdminPendingTasks = () => {
                 : "Showing all available tasks."}
             </p>
           </div>
-          <div className="h-[calc(100vh-280px)] overflow-hidden">
-            <TasksTable
+          <div className="h-[calc(100vh-270px)] overflow-hidden">
+            <TodayTasksTable
               isCompact={true}
               filterTasks={filteredTasks}
               type="pending"
@@ -360,4 +352,4 @@ const AdminPendingTasks = () => {
   );
 };
 
-export default AdminPendingTasks;
+export default AdminTodayTasks;

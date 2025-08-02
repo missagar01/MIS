@@ -10,9 +10,17 @@ import Commitment from "./pages/admin/Commitment";
 import AdminLayout from "./layouts/AdminLayout";
 import UserLayout from "./layouts/UserLayout";
 import NotFound from "./pages/NotFound";
+import ProtectedRoute from "./components/ProtectedRoute";
+import UserKpiKra from './pages/user/UserKpiKra';
+import HistoryCommitment from "./pages/admin/HistoryCommitment";
+import UserKpiKraTable from "./pages/user/UserKpiKraTable";
 
 function App() {
-  const { user } = useAuth();
+  const { user, loading } = useAuth();
+
+  if (loading) {
+    return <div className="flex items-center justify-center h-screen">Loading...</div>;
+  }
 
   return (
     <Routes>
@@ -22,9 +30,9 @@ function App() {
       <Route
         path="/admin"
         element={
-          <RequireAuth role="admin">
+          <ProtectedRoute role="admin">
             <AdminLayout />
-          </RequireAuth>
+          </ProtectedRoute>
         }
       >
         <Route index element={<Navigate to="/admin/dashboard" replace />} />
@@ -33,19 +41,22 @@ function App() {
         <Route path="pending-tasks" element={<AdminPendingTasks />} />
         <Route path="commitment" element={<Commitment />} />
         <Route path="kpi-kra" element={<KpiKra />} />
+        <Route path="history-commitment" element={<HistoryCommitment />} />
       </Route>
 
       {/* User Routes */}
       <Route
         path="/user"
         element={
-          <RequireAuth role="user">
+          <ProtectedRoute role="user">
             <UserLayout />
-          </RequireAuth>
+          </ProtectedRoute>
         }
       >
         <Route index element={<Navigate to="/user/dashboard" replace />} />
         <Route path="dashboard" element={<UserDashboard />} />
+         <Route path="kpi-kra" element={<UserKpiKra />} />
+           <Route path="kpi-kra-table" element={<UserKpiKraTable />} /> 
       </Route>
 
       <Route
@@ -60,21 +71,6 @@ function App() {
       <Route path="*" element={<NotFound />} />
     </Routes>
   );
-}
-
-// Authentication guard component
-function RequireAuth({ children, role }) {
-  const { user } = useAuth();
-
-  if (!user) {
-    return <Navigate to="/login" replace />;
-  }
-
-  if (user.role !== role) {
-    return <Navigate to={user.role === "admin" ? "/admin" : "/user"} replace />;
-  }
-
-  return children;
 }
 
 export default App;

@@ -1,3 +1,4 @@
+
 import React, { useEffect, useState } from "react";
 import PropTypes from "prop-types";
 import { Doughnut } from "react-chartjs-2";
@@ -6,7 +7,7 @@ import { Chart as ChartJS, ArcElement, Tooltip, Legend } from "chart.js";
 ChartJS.register(ArcElement, Tooltip, Legend);
 
 const HalfCircleChart = ({
-  colors = ["#8DD9D5", "#6BBBEA", "#BEA1E8", "#FFB77D", "#FF99A8"],
+  colors = ["#4DA9A6", "#418FBC", "#8C6EC6", "#CC855C", "#CC6B7C"]
 }) => {
   const [chartData, setChartData] = useState({
     labels: [],
@@ -22,8 +23,11 @@ const HalfCircleChart = ({
   const [isLoading, setIsLoading] = useState(true);
 
   const columnHeaders = {
-    J: "Pending Work",
-    K: "Completed Work",
+    D: "Target",
+    F: "Initial Score",
+    G: "Secondary Score",
+    I: "Tertiary Score",
+    J: "Final Score"
   };
 
   useEffect(() => {
@@ -39,12 +43,15 @@ const HalfCircleChart = ({
         const data = JSON.parse(jsonData);
 
         if (data?.table?.rows) {
-          const pendingMap = new Map();
+          const scoreMap = new Map();
+
+          // Helper function to get column index from letter (A=0, B=1, etc.)
+          const getColumnIndex = (letter) => letter.charCodeAt(0) - 65;
 
           data.table.rows.forEach((row) => {
-            // Skip if column D (index 3) is 0
-            const columnD = row.c?.[3]?.v;
-            if (columnD === 0 || columnD === "0") return;
+            // Skip if column D (Target) is 0 or empty (index 3)
+            const columnD = parseFloat(row.c?.[3]?.v) || 0;
+            if (columnD === 0) return;
 
             // Get name from column C (index 2)
             const nameCell = row.c?.[2]?.v;
@@ -58,65 +65,68 @@ const HalfCircleChart = ({
 
             if (!name) return;
 
-            // Priority order: E -> F -> I -> J
-            let pendingValue = 0;
+            // Priority order: F -> G -> I -> J
+            let score = 0;
+            let scoreSource = "";
+            let originalValue = null;
 
-            // Check column E (index 4)
-            const columnE = row.c?.[4]?.v;
-            if (typeof columnE === "number") {
-              pendingValue = columnE;
-            } else if (typeof columnE === "string") {
-              pendingValue = parseFloat(columnE.replace(/[^\d.-]/g, "")) || 0;
+            // Check column F (index 5)
+            const columnF = parseFloat(row.c?.[5]?.v) || 0;
+            if (columnF > 0) {
+              score = columnF;
+              scoreSource = "F";
+              originalValue = row.c?.[5]?.v;
             }
 
-            // If column E is 0 or empty, check column F (index 5)
-            if (!pendingValue) {
-              const columnF = row.c?.[5]?.v;
-              if (typeof columnF === "number") {
-                pendingValue = columnF;
-              } else if (typeof columnF === "string") {
-                pendingValue = parseFloat(columnF.replace(/[^\d.-]/g, "")) || 0;
+            // If column F has same value as others, check column G (index 6)
+            if (score === 0 || hasSameValue(scoreMap, score, 'F')) {
+              const columnG = parseFloat(row.c?.[6]?.v) || 0;
+              if (columnG > 0) {
+                score = columnG;
+                scoreSource = "G";
+                originalValue = row.c?.[6]?.v;
               }
             }
 
-            // If still no value, check column I (index 8)
-            if (!pendingValue) {
-              const columnI = row.c?.[8]?.v;
-              if (typeof columnI === "number") {
-                pendingValue = columnI;
-              } else if (typeof columnI === "string") {
-                pendingValue = parseFloat(columnI.replace(/[^\d.-]/g, "")) || 0;
+            // If column G has same value or still 0, check column I (index 8)
+            if (score === 0 || hasSameValue(scoreMap, score, 'G')) {
+              const columnI = parseFloat(row.c?.[8]?.v) || 0;
+              if (columnI > 0) {
+                score = columnI;
+                scoreSource = "I";
+                originalValue = row.c?.[8]?.v;
               }
             }
 
-            // Finally, fallback to column J (index 9)
-            if (!pendingValue) {
-              const columnJ = row.c?.[9]?.v;
-              if (typeof columnJ === "number") {
-                pendingValue = columnJ;
-              } else if (typeof columnJ === "string") {
-                pendingValue = parseFloat(columnJ.replace(/[^\d.-]/g, "")) || 0;
+            // Final fallback to column J (index 9)
+            if (score === 0 || hasSameValue(scoreMap, score, 'I')) {
+              const columnJ = parseFloat(row.c?.[9]?.v) || 0;
+              if (columnJ > 0) {
+                score = columnJ;
+                scoreSource = "J";
+                originalValue = row.c?.[9]?.v;
               }
             }
 
-            if (pendingValue > 0) {
-              // Keep the highest value for each name
-              if (
-                !pendingMap.has(name) ||
-                pendingValue > pendingMap.get(name)
-              ) {
-                pendingMap.set(name, pendingValue);
-              }
+            if (score > 0) {
+              // Store score with source information
+              scoreMap.set(name, {
+                value: score,
+                source: scoreSource,
+                originalValue: originalValue
+              });
             }
           });
 
-          // Get top 5 entries
-          const sortedData = Array.from(pendingMap.entries())
-            .sort((a, b) => b[1] - a[1])
+          // Get top 5 entries sorted by score
+          const sortedData = Array.from(scoreMap.entries())
+            .sort((a, b) => b[1].value - a[1].value)
             .slice(0, 5);
 
-          const labels = sortedData.map(([name]) => name);
-          const values = sortedData.map(([, val]) => Math.round(val));
+          const labels = sortedData.map(([name, data]) => 
+            `${name} (${columnHeaders[data.source]})`
+          );
+          const values = sortedData.map(([, data]) => Math.round(data.value));
 
           setChartData({
             labels,
@@ -148,8 +158,19 @@ const HalfCircleChart = ({
       }
     };
 
+    // Helper function to check if score already exists in the map
+    const hasSameValue = (map, value, source) => {
+      for (const [, data] of map) {
+        if (data.value === value && data.source === source) {
+          return true;
+        }
+      }
+      return false;
+    };
+
     fetchData();
   }, [colors]);
+
   const options = {
     responsive: true,
     maintainAspectRatio: false,
@@ -189,7 +210,7 @@ const HalfCircleChart = ({
           label: (context) => {
             const label = context.label || "";
             const value = context.parsed || 0;
-            return `${label}: ${value} ${columnHeaders.J}`;
+            return `${label}: ${value}`;
           },
         },
       },
@@ -200,7 +221,7 @@ const HalfCircleChart = ({
     <div className="relative w-full h-full">
       {isLoading ? (
         <div className="flex justify-center items-center h-64">
-          <div className="animate-spin rounded-full h-8 w-8 bordeSr-b-2 border-gray-600"></div>
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-600"></div>
         </div>
       ) : (
         <div className="h-64">

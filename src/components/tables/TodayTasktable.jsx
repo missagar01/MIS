@@ -1,12 +1,10 @@
-import React from "react";
-import { User } from "lucide-react";
+import React, { useState, useEffect } from "react";
 
-import { useState, useEffect } from "react";
-// ImgWithFallback Component (same as in EmployeesTable)
-const ImgWithFallback = ({ src, alt, name, fallbackElement, className }) => {
+// ImgWithFallback without fallback initials or icons
+const ImgWithFallback = ({ src, alt, className }) => {
   const [imgSrc, setImgSrc] = useState("");
-  const [loadFailed, setLoadFailed] = useState(false);
   const [attempts, setAttempts] = useState(0);
+  const [loadFailed, setLoadFailed] = useState(false);
 
   const getDriveImageUrls = (originalUrl) => {
     if (!originalUrl || typeof originalUrl !== "string") return [];
@@ -29,56 +27,30 @@ const ImgWithFallback = ({ src, alt, name, fallbackElement, className }) => {
   };
 
   useEffect(() => {
-    if (!src || src.trim() === "") {
-      setLoadFailed(true);
-      return;
-    }
-
     const urls = getDriveImageUrls(src);
-    if (urls.length === 0) {
+    if (!urls.length) {
       setLoadFailed(true);
       return;
     }
 
     setImgSrc(urls[0]);
-    setLoadFailed(false);
     setAttempts(0);
+    setLoadFailed(false);
   }, [src]);
 
   const handleError = () => {
     const urls = getDriveImageUrls(src);
-    const nextAttempt = attempts + 1;
+    const next = attempts + 1;
 
-    if (nextAttempt < urls.length) {
-      setImgSrc(urls[nextAttempt]);
-      setAttempts(nextAttempt);
+    if (next < urls.length) {
+      setImgSrc(urls[next]);
+      setAttempts(next);
     } else {
       setLoadFailed(true);
     }
   };
 
-  if (loadFailed || !src) {
-    return (
-      <div className="flex flex-col items-center justify-center space-y-1">
-        {fallbackElement ? (
-          fallbackElement
-        ) : (
-          <div
-            className={`${className} bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center`}
-          >
-            <span className="text-white text-lg font-bold">
-              {name
-                ?.split(" ")
-                .slice(0, 2)
-                .map((part) => part.charAt(0))
-                .join("")
-                .toUpperCase() || "?"}
-            </span>
-          </div>
-        )}
-      </div>
-    );
-  }
+  if (loadFailed || !src) return null;
 
   return (
     <img
@@ -93,7 +65,7 @@ const ImgWithFallback = ({ src, alt, name, fallbackElement, className }) => {
   );
 };
 
-// Utility function to convert Google Drive URLs
+// Utility to convert Google Drive link to image URL
 const convertGoogleDriveImageUrl = (url) => {
   if (!url) return null;
 
@@ -162,17 +134,13 @@ const TodayTasksTable = ({
 
       return (
         <div className="flex items-center space-x-2">
-          <ImgWithFallback
-            src={imageUrl}
-            alt={`${userName} profile`}
-            name={userName}
-            className="w-8 h-8 rounded-full"
-            fallbackElement={
-              <div className="w-8 h-8 bg-gray-200 rounded-full p-1 flex items-center justify-center">
-                <User size={14} className="text-gray-400" />
-              </div>
-            }
-          />
+          {imageUrl && (
+            <ImgWithFallback
+              src={imageUrl}
+              alt={`${userName} profile`}
+              className="w-8 h-8 rounded-full"
+            />
+          )}
           <span className="font-medium text-sm">{userName}</span>
         </div>
       );
@@ -185,7 +153,6 @@ const TodayTasksTable = ({
     { id: "col13", label: "Link With Name" },
     { id: "col2", label: "Fms Name" },
     { id: "col3", label: "Task Name" },
-    // { id: "col4", label: "Person Name" },
     { id: "col15", label: "Today Task" },
   ];
 
@@ -225,8 +192,8 @@ const TodayTasksTable = ({
                   </td>
                 </tr>
               ) : (
-                processedData.map((item) => (
-                  <tr key={item._id} className="hover:bg-gray-50">
+                processedData.map((item, index) => (
+                  <tr key={item._id || index} className="hover:bg-gray-50">
                     {staticHeaders.map((header) => (
                       <td
                         key={header.id}

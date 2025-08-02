@@ -1,185 +1,297 @@
 import React, { useState, useEffect } from "react";
+import {
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  Legend,
+  ResponsiveContainer
+} from "recharts";
 
 const DepartmentScores = () => {
   const [status, setStatus] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
-  const [imageUrl, setImageUrl] = useState(null);
-  const [debugInfo, setDebugInfo] = useState({});
+  const [tableData, setTableData] = useState([]);
+  const [headers, setHeaders] = useState([]);
+  const [chartData, setChartData] = useState([]);
+  const [graphImage, setGraphImage] = useState(null); // ✅ NEW STATE
+
   const GOOGLE_SCRIPT_URL =
     "https://script.google.com/macros/s/AKfycbwe-Bvd7px2trl1lu2uvWnOtrawtso8LSdUsBCGC23w5G5wZMwcSi61pnbncvUBA0Gd-w/exec";
 
-  const fetchImageFromScript = async () => {
+  const processChartData = (rawData) => {
+    if (!rawData || rawData.length < 2) return [];
+    const headers = rawData[0];
+    const rows = rawData.slice(1);
+
+    return rows.map((row) => {
+      const item = { department: row[0] || "Unknown" };
+      headers.slice(1).forEach((header, index) => {
+        const value = row[index + 1];
+        if (typeof value === "number") {
+          item[header] = value;
+        } else if (typeof value === "string") {
+          const cleanValue = value.replace("%", "").replace(",", "");
+          const numericValue = parseFloat(cleanValue);
+          item[header] = isNaN(numericValue) ? 0 : numericValue;
+        } else {
+          item[header] = 0;
+        }
+      });
+      return item;
+    });
+  };
+
+  const fetchWithJSONP = () => {
+    return new Promise((resolve, reject) => {
+      const callbackName = `jsonp_callback_${Date.now()}_${Math.random()
+        .toString(36)
+        .substr(2, 5)}`;
+      let timeoutId;
+      let scriptLoaded = false;
+
+      const cleanup = () => {
+        delete window[callbackName];
+        const script = document.getElementById(callbackName);
+        if (script && script.parentNode) {
+          script.parentNode.removeChild(script);
+        }
+        if (timeoutId) clearTimeout(timeoutId);
+      };
+
+      window[callbackName] = (response) => {
+        scriptLoaded = true;
+        cleanup();
+        if (response?.status === "success" && response?.rawData) {
+          resolve(response);
+        } else {
+          reject(new Error(response?.error || "Invalid response from server"));
+        }
+      };
+
+      const script = document.createElement("script");
+      script.id = callbackName;
+      script.src = `${GOOGLE_SCRIPT_URL}?action=getGraphImage&callback=${callbackName}&timestamp=${Date.now()}`;
+      script.async = true;
+
+      script.onerror = () => {
+        cleanup();
+        reject(new Error("Failed to load Google Apps Script"));
+      };
+
+      timeoutId = setTimeout(() => {
+        if (!scriptLoaded) {
+          cleanup();
+          reject(new Error("Request timed out"));
+        }
+      }, 15000);
+
+      document.head.appendChild(script);
+    });
+  };
+
+  const processSuccessfulData = (data) => {
     try {
-      setLoading(true);
-      setStatus("🔄 Loading image from Google Script...");
+      const [headerRow, ...dataRows] = data.rawData;
+      setHeaders(headerRow);
+      setTableData(dataRows);
+      setChartData(processChartData(data.rawData));
+      setStatus(`✅ Loaded ${dataRows.length} departments`);
       setError(null);
 
-      const requestUrl = `${GOOGLE_SCRIPT_URL}?action=getGraphImage&timestamp=${Date.now()}`;
-      console.log("🌐 Requesting:", requestUrl);
-
-      // ✅ Try fetch first
-      try {
-        const response = await fetch(requestUrl, {
-          method: "GET",
-          headers: {
-            Accept: "application/json",
-          },
-        });
-
-        console.log("📡 Response status:", response.status);
-        console.log("📡 Response ok:", response.ok);
-
-        if (response.ok) {
-          const data = await response.json();
-          console.log("📄 Response data keys:", Object.keys(data));
-          console.log("📄 Has image:", !!data.departmentScoreGraphImage);
-          console.log(
-            "📄 Image length:",
-            data.departmentScoreGraphImage?.length || 0
-          );
-
-          if (data.departmentScoreGraphImage) {
-            const base64Image = `data:image/png;base64,${data.departmentScoreGraphImage}`;
-            setImageUrl(base64Image);
-            setStatus("✅ Image loaded successfully via fetch!");
-            setDebugInfo({
-              method: "fetch",
-              success: true,
-              imageSize: data.departmentScoreGraphImage.length,
-              timestamp: new Date().toLocaleTimeString(),
-            });
-            return;
-          }
-        }
-      } catch (fetchError) {
-        console.log("❌ Fetch failed:", fetchError.message);
-        setStatus("⚠️ Fetch failed, trying JSONP...");
+      // ✅ HANDLE BASE64 IMAGE
+      if (data.departmentScoreGraphImage) {
+        setGraphImage(`data:image/png;base64,${data.departmentScoreGraphImage}`);
+      } else {
+        console.warn("Department Score Graph image not available");
       }
+    } catch (err) {
+      setError(`Processing error: ${err.message}`);
+      setStatus("❌ Failed to process data");
+    }
+  };
 
-      // ✅ JSONP fallback (यह definitely काम करेगा)
-      await new Promise((resolve, reject) => {
-        const callbackName = `jsonp_callback_${Date.now()}`;
-        const timeoutId = setTimeout(() => {
-          cleanup();
-          reject(new Error("JSONP timeout"));
-        }, 15000);
-
-        const cleanup = () => {
-          clearTimeout(timeoutId);
-          if (window[callbackName]) {
-            delete window[callbackName];
-          }
-          const script = document.getElementById(callbackName);
-          if (script) {
-            script.remove();
-          }
-        };
-
-        window[callbackName] = (data) => {
-          console.log("📄 JSONP Response received:", Object.keys(data));
-          console.log("📄 JSONP Has image:", !!data.departmentScoreGraphImage);
-
-          cleanup();
-
-          if (data.departmentScoreGraphImage) {
-            const base64Image = `data:image/png;base64,${data.departmentScoreGraphImage}`;
-            setImageUrl(base64Image);
-            setStatus("✅ Image loaded successfully via JSONP!");
-            setDebugInfo({
-              method: "jsonp",
-              success: true,
-              imageSize: data.departmentScoreGraphImage.length,
-              timestamp: new Date().toLocaleTimeString(),
-            });
-            resolve();
-          } else {
-            reject(new Error("No image data in JSONP response"));
-          }
-        };
-
-        const script = document.createElement("script");
-        script.id = callbackName;
-        script.src = `${GOOGLE_SCRIPT_URL}?action=getGraphImage&callback=${callbackName}&_=${Date.now()}`;
-        script.onerror = () => {
-          cleanup();
-          reject(new Error("JSONP script failed to load"));
-        };
-
-        document.body.appendChild(script);
-      });
-    } catch (finalError) {
-      console.error("❌ All methods failed:", finalError);
-      setError(`Failed to load image: ${finalError.message}`);
-      setStatus("❌ Failed to load image");
-      setDebugInfo({
-        method: "failed",
-        success: false,
-        error: finalError.message,
-        timestamp: new Date().toLocaleTimeString(),
-      });
+  const fetchData = async () => {
+    setLoading(true);
+    setStatus("🔄 Fetching data...");
+    setError(null);
+    try {
+      const response = await fetchWithJSONP();
+      processSuccessfulData(response);
+    } catch (err) {
+      setError(err.message || "Unknown error");
+      setStatus("❌ Failed to fetch data");
+      setHeaders([]);
+      setTableData([]);
+      setChartData([]);
     } finally {
       setLoading(false);
     }
   };
 
   useEffect(() => {
-    fetchImageFromScript();
+    fetchData();
   }, []);
 
   const handleRefresh = () => {
-    setImageUrl(null);
+    setTableData([]);
+    setHeaders([]);
+    setChartData([]);
+    setGraphImage(null); // Reset image
     setError(null);
     setStatus("");
-    setDebugInfo({});
-    fetchImageFromScript();
+    fetchData();
   };
 
-  const openScriptUrl = () => {
-    window.open(`${GOOGLE_SCRIPT_URL}?action=getGraphImage`, "_blank");
+  const renderChartBars = () => {
+    if (!headers || headers.length < 2) return null;
+    const colors = ["#ffc107", "#f44336", "#2196f3", "#4caf50", "#9c27b0", "#00bcd4", "#ff5722", "#607d8b"];
+    return headers.slice(1).map((header, index) => (
+      <Bar
+        key={`${header}-${index}`}
+        dataKey={header}
+        fill={colors[index % colors.length]}
+        name={header}
+      />
+    ));
+  };
+
+  const CustomTooltip = ({ active, payload, label }) => {
+    if (active && payload?.length) {
+      return (
+        <div className="bg-white p-3 border rounded shadow text-sm text-gray-700">
+          <p className="font-semibold">{`Department: ${label}`}</p>
+          {payload.map((entry, index) => (
+            <p key={index} style={{ color: entry.color }}>
+              {`${entry.name}: ${entry.value.toFixed(2)}`}
+            </p>
+          ))}
+        </div>
+      );
+    }
+    return null;
   };
 
   return (
-    <div className="p-6 max-w-4xl mx-auto bg-white rounded-lg shadow-lg">
+    <div className="p-6 max-w-7xl mx-auto bg-white rounded-lg shadow-lg">
       <div className="text-center mb-6">
         <h2 className="text-2xl font-bold text-gray-800 mb-4">
           Department Scores Dashboard
         </h2>
+        <button
+          onClick={handleRefresh}
+          className="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600 disabled:bg-gray-400 transition-colors"
+          disabled={loading}
+        >
+          {loading ? "Refreshing..." : "Refresh Data"}
+        </button>
+        <p className="text-sm text-gray-600 mt-2">{status}</p>
+        {error && (
+          <div className="mt-2 p-3 bg-red-50 border border-red-200 rounded text-sm text-red-600">
+            {error}
+          </div>
+        )}
       </div>
 
-      {/* Image Display */}
-      <div className="border-2 border-gray-200 rounded-lg overflow-hidden bg-gray-50 min-h-[200px] flex items-center justify-center">
+      {/* Bar Chart */}
+      {chartData.length > 0 && (
+        <div className="mb-8 p-4 bg-gray-50 border border-gray-200 rounded-lg">
+          <h3 className="text-lg font-semibold mb-4 text-gray-700">
+            Department Scores Visualization
+          </h3>
+          <div className="h-96">
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart
+                data={chartData}
+                margin={{ top: 20, right: 30, left: 20, bottom: 80 }}
+              >
+                <CartesianGrid strokeDasharray="3 3" />
+                <XAxis
+                  dataKey="department"
+                  angle={-45}
+                  textAnchor="end"
+                  height={80}
+                  tick={{ fontSize: 11 }}
+                  interval={0}
+                />
+                <YAxis tick={{ fontSize: 11 }} />
+                <Tooltip content={<CustomTooltip />} />
+                <Legend />
+                {renderChartBars()}
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+
+          {/* ✅ IMAGE BLOCK */}
+          {graphImage && (
+            <div className="mt-8 text-center">
+              <h3 className="text-lg font-semibold mb-4 text-gray-700">
+                Department Graph Image
+              </h3>
+              <img
+                id="departmentScoreGraph"
+                src={graphImage}
+                alt="Department Score Graph"
+                className="max-w-full mx-auto border border-gray-200 rounded shadow"
+              />
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Data Table */}
+      <div className="border-2 border-gray-200 rounded-lg overflow-hidden bg-gray-50 p-4">
+        <h3 className="text-lg font-semibold mb-4 text-gray-700">Department Data Table</h3>
         {loading ? (
           <div className="text-center p-8">
             <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
-            <div className="text-gray-600">
-              Loading department scores chart...
-            </div>
+            <div className="text-gray-600">Loading department scores...</div>
           </div>
-        ) : imageUrl ? (
-          <img
-            src={imageUrl}
-            alt="Department Score Chart"
-            className="max-w-full max-h-full object-contain"
-            onLoad={() => {
-              console.log("✅ Image displayed successfully!");
-            }}
-            onError={(e) => {
-              console.error("❌ Image failed to display:", e);
-              setError("Image failed to display after loading");
-            }}
-          />
-        ) : (
+        ) : error ? (
           <div className="text-center p-8">
-            <div className="text-6xl mb-4">📊</div>
-            <div className="text-xl font-medium text-gray-600 mb-2">
-              {error ? "Failed to Load Chart" : "No Chart Data Available"}
-            </div>
-            <div className="text-sm text-gray-500">
-              {error
-                ? "Please try refreshing or check the console for details"
-                : "Waiting for data..."}
-            </div>
+            <div className="text-red-500 mb-4">{error}</div>
+            <button
+              onClick={handleRefresh}
+              className="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600"
+            >
+              Try Again
+            </button>
+          </div>
+        ) : tableData.length > 0 ? (
+          <div className="overflow-x-auto">
+            <table className="min-w-full bg-white border border-gray-200">
+              <thead>
+                <tr className="bg-gray-100">
+                  {headers.map((header, i) => (
+                    <th
+                      key={i}
+                      className="py-3 px-4 border-b border-gray-200 text-left font-semibold text-gray-700"
+                    >
+                      {header}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {tableData.map((row, rowIndex) => (
+                  <tr key={rowIndex} className={rowIndex % 2 === 0 ? "bg-white" : "bg-gray-50"}>
+                    {row.map((cell, i) => (
+                      <td key={i} className="py-3 px-4 border-b border-gray-200 text-gray-600">
+                        {typeof cell === "number" ? cell.toFixed(2) : cell}
+                      </td>
+                    ))}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        ) : (
+          <div className="text-center p-8 text-gray-500">
+            <div className="text-lg mb-2">No data available</div>
+            <p className="text-sm">Click "Refresh Data" to load department scores</p>
           </div>
         )}
       </div>

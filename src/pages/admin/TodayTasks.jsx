@@ -3,7 +3,7 @@ import { useState, useEffect } from "react";
 import { toast, Toaster } from "react-hot-toast";
 import { User } from "lucide-react";
 import TodayTasksTable from "../../components/tables/TodayTasktable";
-// Utility function to convert Google Drive URLs
+
 const convertGoogleDriveImageUrl = (url) => {
   if (!url) return null;
 
@@ -34,7 +34,7 @@ const AdminTodayTasks = () => {
   const [showPersonDropdown, setShowPersonDropdown] = useState(false);
 
   const DISPLAY_COLUMNS = ["col2", "col3", "col4", "col14"];
-  const SPREADSHEET_ID = "1KnflbDnevxgzPqsBfsduPWS75SiQq_l2V5lip6_KMog";
+  const SPREADSHEET_ID = "1szwMeIermOLKS5qJV3C6DXOqp3RdlagF46-JkXhMjKo";
 
   const fetchTodayData = async () => {
     try {
@@ -59,7 +59,6 @@ const AdminTodayTasks = () => {
           });
         }
 
-        // Process col23 for image and name
         const rawValue = String(itemObj.col23 || "").replace(/^"|"$/g, "");
         let imageUrl = "";
         let userName = "";
@@ -107,7 +106,6 @@ const AdminTodayTasks = () => {
     fetchTodayData();
   }, []);
 
-  // Get unique person names with their images from col23
   const getPersonNamesWithImages = () => {
     const personMap = new Map();
 
@@ -129,7 +127,6 @@ const AdminTodayTasks = () => {
     );
   };
 
-  // Get unique FMS names
   const getFMSNames = () => {
     const fmsNames = new Set();
     todayTasks.forEach((item) => {
@@ -165,11 +162,10 @@ const AdminTodayTasks = () => {
   );
 
   return (
-    <div className="space-y-6">
-      <Toaster />
-
+    <div className="space-y-4" style={{ height: "calc(110vh - 90px)",marginTop:"-40px" }}>
+      
       {/* Header */}
-      <div className="flex justify-between items-center">
+      <div className="flex justify-between items-center pt-2">
         <h1 className="text-2xl font-bold text-gray-800">Today Tasks</h1>
         <div className="text-sm bg-yellow-100 text-yellow-800 px-3 py-1 rounded-full">
           {filteredTasks.length} Today Task
@@ -178,8 +174,8 @@ const AdminTodayTasks = () => {
       </div>
 
       {/* Search + Inline Filter */}
-      <div className="bg-white p-4 rounded border space-y-4">
-        <div className="grid md:grid-cols-3 gap-4">
+      <div className="bg-white p-3 rounded border space-y-3">
+        <div className="grid md:grid-cols-3 gap-3">
           {/* Search Input */}
           <input
             type="text"
@@ -243,7 +239,7 @@ const AdminTodayTasks = () => {
             </div>
 
             {showPersonDropdown && (
-              <div className="absolute z-10 mt-1 w-full bg-white border border-gray-300 rounded-md shadow-lg max-h-60 overflow-auto">
+              <div className="absolute z-20 mt-1 w-full bg-white border border-gray-300 rounded-md shadow-lg max-h-60 overflow-auto">
                 <div
                   className="p-2 hover:bg-gray-100 cursor-pointer"
                   onClick={() =>
@@ -327,8 +323,8 @@ const AdminTodayTasks = () => {
           </button>
         </div>
       ) : filteredTasks.length > 0 ? (
-        <div className="bg-white rounded-lg border shadow-sm p-6">
-          <div className="mb-4">
+        <div className="bg-white rounded-lg border shadow-sm p-4">
+          <div className="mb-3">
             <h2 className="text-lg font-semibold text-gray-800">
               {filterValue
                 ? `Showing ${filterType === "col2" ? "FMS Name" : "Person"}: ${
@@ -342,7 +338,7 @@ const AdminTodayTasks = () => {
                 : "Showing all available tasks."}
             </p>
           </div>
-          <div className="h-[calc(100vh-280px)] overflow-hidden">
+          <div className="h-[calc(100vh-270px)] overflow-hidden">
             <TodayTasksTable
               isCompact={true}
               filterTasks={filteredTasks}

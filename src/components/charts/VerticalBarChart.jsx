@@ -1,3 +1,5 @@
+
+
 import React, { useEffect, useState } from "react";
 import PropTypes from "prop-types";
 import { Bar } from "react-chartjs-2";
@@ -21,10 +23,21 @@ ChartJS.register(
 );
 
 const VerticalBarChart = ({
+  data,
   title,
-  colors = ["#8b5cf6", "#a78bfa", "#c4b5fd", "#ddd6fe", "#ede9fe"],
+  colors = [
+    "#EF4444", // Red (for worst performers)
+    "#F97316", // Orange
+    "#FACC15", // Yellow
+    "#8B5CF6", // Violet
+    "#3B82F6", // Blue
+    "#22C55E", // Green
+    "#EC4899"  // Pink (for best performers)
+  ],
   maxValue = 100,
 }) => {
+
+  // console.log("data",data)
   const [chartData, setChartData] = useState({
     labels: [],
     datasets: [
@@ -37,12 +50,12 @@ const VerticalBarChart = ({
       },
     ],
   });
-  const [isLoading, setIsLoading] = useState(true);
 
-  const columnHeaders = {
-    J: "Pending Work",
-    K: "Completed Work",
-  };
+  
+
+
+  const [isLoading, setIsLoading] = useState(true);
+  const [sortedData, setSortedData] = useState([]);
 
   useEffect(() => {
     const fetchData = async () => {
@@ -57,13 +70,9 @@ const VerticalBarChart = ({
         const data = JSON.parse(jsonData);
 
         if (data?.table?.rows) {
-          const pendingMap = new Map();
+          const performanceData = [];
 
           data.table.rows.forEach((row) => {
-            // Skip if column D (index 3) is 0
-            const columnD = row.c?.[3]?.v;
-            if (columnD === 0 || columnD === "0") return;
-
             // Get name from column C (index 2)
             const nameCell = row.c?.[2]?.v;
             let name = "";
@@ -76,65 +85,72 @@ const VerticalBarChart = ({
 
             if (!name) return;
 
-            // Priority order: E -> F -> I -> J
-            let pendingValue = 0;
+            // Get target from column D (index 3)
+            const columnD = row.c?.[3]?.v;
+            const target = typeof columnD === "number" ? columnD : parseFloat(columnD) || 0;
+            
+            // Skip if target is 0
+            if (target === 0) return;
 
-            // Check column E (index 4)
-            const columnE = row.c?.[4]?.v;
-            if (typeof columnE === "number") {
-              pendingValue = columnE;
-            } else if (typeof columnE === "string") {
-              pendingValue = parseFloat(columnE.replace(/[^\d.-]/g, "")) || 0;
-            }
+            // Get work done from column F (index 5)
+            const columnF = row.c?.[5]?.v;
+            const workDone = typeof columnF === "number" ? columnF : parseFloat(columnF) || 0;
 
-            // If column E is 0 or empty, check column F (index 5)
-            if (!pendingValue) {
-              const columnF = row.c?.[5]?.v;
-              if (typeof columnF === "number") {
-                pendingValue = columnF;
-              } else if (typeof columnF === "string") {
-                pendingValue = parseFloat(columnF.replace(/[^\d.-]/g, "")) || 0;
-              }
-            }
+            // Get column G value (index 6) - for tie-breaking
+            const columnG = row.c?.[6]?.v;
+            const scoreG = typeof columnG === "number" ? columnG : parseFloat(columnG) || 0;
 
-            // If still no value, check column I (index 8)
-            if (!pendingValue) {
-              const columnI = row.c?.[8]?.v;
-              if (typeof columnI === "number") {
-                pendingValue = columnI;
-              } else if (typeof columnI === "string") {
-                pendingValue = parseFloat(columnI.replace(/[^\d.-]/g, "")) || 0;
-              }
-            }
+            // Get pending work from column I (index 8) - for tie-breaking
+            const columnI = row.c?.[8]?.v;
+            const pendingWork = typeof columnI === "number" ? columnI : parseFloat(columnI) || 0;
 
-            // Finally, fallback to column J (index 9)
-            if (!pendingValue) {
-              const columnJ = row.c?.[9]?.v;
-              if (typeof columnJ === "number") {
-                pendingValue = columnJ;
-              } else if (typeof columnJ === "string") {
-                pendingValue = parseFloat(columnJ.replace(/[^\d.-]/g, "")) || 0;
-              }
-            }
+            // Get column J value (index 9) - for final tie-breaking
+            const columnJ = row.c?.[9]?.v;
+            const scoreJ = typeof columnJ === "number" ? columnJ : parseFloat(columnJ) || 0;
 
-            if (pendingValue > 0) {
-              // Keep the highest value for each name
-              if (
-                !pendingMap.has(name) ||
-                pendingValue > pendingMap.get(name)
-              ) {
-                pendingMap.set(name, pendingValue);
-              }
-            }
+            // Calculate performance ratio (work done / target)
+            const performanceRatio = workDone / target;
+
+            performanceData.push({
+              name,
+              target,
+              workDone,
+              performanceRatio,
+              scoreG,
+              pendingWork,
+              scoreJ,
+              displayValue: Math.round(performanceRatio * 100)
+            });
           });
 
-          // Get top 5 entries
-          const sortedData = Array.from(pendingMap.entries())
-            .sort((a, b) => b[1] - a[1])
-            .slice(0, 5);
+          // Sort based on priority logic
+          const sorted = performanceData.sort((a, b) => {
+            // Primary: Compare performance ratio (ascending - worse performers first)
+            if (a.performanceRatio !== b.performanceRatio) {
+              return a.performanceRatio - b.performanceRatio;
+            }
 
-          const labels = sortedData.map(([name]) => name);
-          const values = sortedData.map(([, val]) => Math.round(val));
+            // Tie-breaker 1: Column G - more negative score goes higher
+            if (a.scoreG !== b.scoreG) {
+              return a.scoreG - b.scoreG;
+            }
+
+            // Tie-breaker 2: Column I - more pending work goes higher
+            if (a.pendingWork !== b.pendingWork) {
+              return b.pendingWork - a.pendingWork;
+            }
+
+            // Tie-breaker 3: Column J - lower value goes higher
+            return a.scoreJ - b.scoreJ;
+          }).slice(0, 7);
+
+          setSortedData(sorted);
+
+          const labels = sorted.map(item => item.name);
+          // Create bars where worst performer gets tallest bar
+          const values = sorted.map((item, index) => {
+            return 100 - (index * 10); // Worst gets 100, next gets 90, etc.
+          });
 
           setChartData({
             labels,
@@ -155,7 +171,7 @@ const VerticalBarChart = ({
           labels: ["Error loading data"],
           datasets: [
             {
-              data: [100],
+              data: [50],
               backgroundColor: [colors[0]],
               borderWidth: 0,
             },
@@ -168,8 +184,9 @@ const VerticalBarChart = ({
 
     fetchData();
   }, [colors]);
+
   const options = {
-    indexAxis: "x", // <-- Horizontal names, vertical bars
+    indexAxis: "x",
     responsive: true,
     maintainAspectRatio: false,
     plugins: {
@@ -192,7 +209,11 @@ const VerticalBarChart = ({
       tooltip: {
         callbacks: {
           label: (context) => {
-            return `${context.label}: ${context.parsed.y} (${columnHeaders.J})`;
+            const originalData = sortedData[context.dataIndex];
+            if (originalData) {
+              return `${context.label}: ${originalData.displayValue}% completion (Rank: ${context.dataIndex + 1})`;
+            }
+            return `${context.label}: Rank ${context.dataIndex + 1}`;
           },
         },
       },
@@ -200,7 +221,7 @@ const VerticalBarChart = ({
     scales: {
       y: {
         beginAtZero: true,
-        max: maxValue,
+        max: 100,
         grid: {
           color: "rgba(0, 0, 0, 0.05)",
           drawBorder: false,

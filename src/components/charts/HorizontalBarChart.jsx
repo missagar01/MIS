@@ -1,57 +1,8 @@
 import React, { useEffect, useState } from "react";
-import PropTypes from "prop-types";
-import { Bar } from "react-chartjs-2";
-import {
-  Chart as ChartJS,
-  CategoryScale,
-  LinearScale,
-  BarElement,
-  Title,
-  Tooltip,
-  Legend,
-} from "chart.js";
 
-ChartJS.register(
-  CategoryScale,
-  LinearScale,
-  BarElement,
-  Title,
-  Tooltip,
-  Legend
-);
-
-const HorizontalBarChart = ({
-  title,
-  colors = [
-    "#ef4444",
-    "#f87171",
-    "#fca5a5",
-    "#fecaca",
-    "#fee2e2",
-    "#3b82f6",
-    "#60a5fa",
-    "#93c5fd",
-    "#c3ddfd",
-    "#dbeafe",
-  ],
-  maxValue = null,
-}) => {
+const PendingWiseChart = () => {
   const [isLoading, setIsLoading] = useState(true);
-  const [chartData, setChartData] = useState({
-    labels: [],
-    datasets: [
-      {
-        data: [],
-        backgroundColor: [],
-        borderWidth: 0,
-        borderRadius: 6,
-        borderSkipped: false,
-        barThickness: 20,
-        minBarLength: 5,
-      },
-    ],
-  });
-  const [nameMap, setNameMap] = useState({});
+  const [pendingData, setPendingData] = useState([]);
 
   useEffect(() => {
     const fetchData = async () => {
@@ -66,213 +17,126 @@ const HorizontalBarChart = ({
         const data = JSON.parse(jsonData);
 
         if (data?.table?.rows) {
-          const combinedData = new Map();
-          const nameMapping = {};
-
+          const processedData = [];
+          
           data.table.rows.forEach((row) => {
-            const columnO = row.c?.[14]?.v;
-            const columnK = row.c?.[10]?.v;
-            const columnE = row.c?.[4]?.v;
-
-            if (!columnO || !columnK) return;
-
-            let cleanedValue = 0;
-            if (typeof columnK === "number") {
-              cleanedValue = columnK;
-            } else if (typeof columnK === "string") {
-              cleanedValue = parseFloat(columnK.replace(/[^\d.-]/g, ""));
-            }
-
-            if (isNaN(cleanedValue) || cleanedValue <= 0) return;
-
-            const label = String(columnO).trim();
-            combinedData.set(
-              label,
-              (combinedData.get(label) || 0) + cleanedValue
-            );
-
-            if (columnE && !nameMapping[label]) {
-              nameMapping[label] = String(columnE).trim();
+            const name = row.c?.[4]?.v;
+            const pendingValue = row.c?.[10]?.v;
+            
+            if (name && pendingValue) {
+              let numericValue = 0;
+              if (typeof pendingValue === 'number') {
+                numericValue = pendingValue;
+              } else if (typeof pendingValue === 'string') {
+                numericValue = parseFloat(pendingValue.replace(/[^\d.-]/g, ""));
+              }
+              
+              if (!isNaN(numericValue)) {
+                processedData.push({
+                  name: String(name).trim().toUpperCase(),
+                  pending: Math.round(numericValue)
+                });
+              }
             }
           });
 
-          const sortedData = Array.from(combinedData.entries()).sort(
-            (a, b) => b[1] - a[1]
-          );
-          const labels = sortedData.map(([label]) => label);
-          const values = sortedData.map(([, value]) => Math.round(value));
-
-          setNameMap(nameMapping);
-
-          setChartData({
-            labels,
-            datasets: [
-              {
-                data: values,
-                backgroundColor: values.map(
-                  (_, index) => colors[index % colors.length]
-                ),
-                borderWidth: 0,
-                borderRadius: 6,
-                borderSkipped: false,
-                barThickness: 20,
-                minBarLength: 5,
-              },
-            ],
-          });
+          processedData.sort((a, b) => b.pending - a.pending);
+          setPendingData(processedData);
         }
       } catch (err) {
-        console.error("Error:", err);
-        setChartData({
-          labels: ["Error"],
-          datasets: [
-            {
-              data: [0],
-              backgroundColor: [colors[0]],
-              borderWidth: 0,
-              borderRadius: 6,
-              borderSkipped: false,
-              barThickness: 20,
-              minBarLength: 5,
-            },
-          ],
-        });
+        console.error("Error fetching data:", err);
       } finally {
         setIsLoading(false);
       }
     };
 
     fetchData();
-  }, [colors, maxValue]);
+  }, []);
 
-  // Fixed height for scrollable container
-  const chartHeight = Math.max(400, chartData.labels.length * 35);
-
-  const options = {
-    indexAxis: "y",
-    responsive: true,
-    maintainAspectRatio: false,
-    layout: {
-      padding: {
-        left: 10,
-        right: 10,
-        top: 10,
-        bottom: 10,
-      },
-    },
-    plugins: {
-      legend: { display: false },
-      title: {
-        display: !!title,
-        text: title || "",
-        font: { size: 18, weight: "600", family: "'Inter', sans-serif" },
-        color: "#1F2937",
-        padding: { bottom: 20, top: 10 },
-      },
-      tooltip: {
-        backgroundColor: "rgba(17, 24, 39, 0.95)",
-        titleColor: "#fff",
-        bodyColor: "#fff",
-        padding: 12,
-        boxPadding: 8,
-        titleFont: { size: 14, weight: "600", family: "'Inter', sans-serif" },
-        bodyFont: { size: 13, family: "'Inter', sans-serif" },
-        callbacks: {
-          label: function (context) {
-            const label = context.label || "";
-            const nameFromColumnE = nameMap[label] || "No name available";
-            return [
-              `Name: ${nameFromColumnE}`,
-              `Value: ${context.raw.toLocaleString()}`,
-            ];
-          },
-        },
-      },
-    },
-    scales: {
-      x: {
-        beginAtZero: true,
-        max:
-          maxValue || Math.max(...(chartData.datasets[0]?.data || [0])) * 1.1,
-        grid: {
-          display: true,
-          color: "#f1f5f9",
-          drawBorder: false,
-        },
-        ticks: {
-          font: { size: 12, family: "'Inter', sans-serif" },
-          color: "#64748B",
-          padding: 8,
-        },
-      },
-      y: {
-        grid: {
-          display: false,
-          drawBorder: false,
-        },
-        ticks: {
-          font: { size: 12, family: "'Inter', sans-serif" },
-          color: "#64748B",
-          padding: 8,
-          callback: (value, index) => {
-            const label = chartData.labels[index];
-            const name = nameMap[label] || "";
-
-            // Show label on first line and name on second line
-            return [label, name];
-          },
-        },
-      },
-    },
-    animation: {
-      duration: 800,
-      easing: "easeInOutQuart",
-    },
-  };
+  const maxPending = Math.max(...pendingData.map(item => item.pending), 100);
 
   return (
-    <div className="relative bg-white rounded-lg p-6 shadow-sm border border-gray-200 w-full">
-      {title && (
-        <h3 className="text-xl font-semibold text-gray-800 mb-4">{title}</h3>
-      )}
-
-      <div
-        className="overflow-y-auto border rounded-lg bg-gray-50 p-2"
-        style={{ height: "200px" }} // Fixed height container
-      >
-        <div
-          style={{
-            height: `${chartHeight}px`,
-            minHeight: "200px",
-            width: "100%",
-          }}
+    <div className="bg-white rounded-lg shadow-sm border border-gray-200 w-full overflow-hidden">
+      {/* Header with highlighted title */}
+      
+      <div className="flex flex-col h-full">
+        <div 
+          className="overflow-y-auto scrollbar-thin scrollbar-thumb-blue-500 scrollbar-track-blue-100"
+          style={{ height: '400px' }}
         >
-          {isLoading ? (
-            <div className="flex items-center justify-center h-full">
-              <div className="text-center">
-                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500 mx-auto mb-2"></div>
-                <p className="text-gray-600 text-sm">Loading data...</p>
-              </div>
-            </div>
-          ) : (
-            <Bar data={chartData} options={options} />
-          )}
+          <table className="min-w-full divide-y divide-gray-200">
+            <thead className="bg-blue-50 sticky top-0 z-10">
+              <tr>
+                <th className="px-6 py-3 text-left text-xs font-bold text-blue-700 uppercase tracking-wider">
+                  Name
+                </th>
+                <th className="px-6 py-3 text-left text-xs font-bold text-blue-700 uppercase tracking-wider w-3/4">
+                  Pending
+                </th>
+              </tr>
+            </thead>
+            <tbody className="bg-white divide-y divide-gray-200">
+              {pendingData.map((item, index) => {
+                const barColor = item.pending > 75 
+                  ? 'bg-red-500' 
+                  : item.pending > 50 
+                    ? 'bg-yellow-500' 
+                    : 'bg-green-500';
+                
+                return (
+                  <tr key={index} className="hover:bg-gray-50">
+                    <td className="px-6 py-4">
+                      <div className="text-sm font-medium text-gray-900">
+                        {item.name}
+                      </div>
+                    </td>
+                    <td className="px-6 py-4">
+                      <div className="flex items-center gap-3">
+                        <div className="w-full bg-gray-200 rounded-full h-3.5">
+                          <div 
+                            className={`${barColor} h-3.5 rounded-full transition-all duration-300`}
+                            style={{ width: `${(item.pending / maxPending) * 100}%` }}
+                          ></div>
+                        </div>
+                        <span className="text-sm font-medium text-gray-700 min-w-[40px]">
+                          {item.pending}
+                        </span>
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
+              {/* Extra spacing at bottom to ensure last item is fully visible */}
+              {pendingData.length > 0 && (
+                <tr>
+                  <td colSpan="2" className="h-4"></td>
+                </tr>
+              )}
+            </tbody>
+          </table>
         </div>
-      </div>
 
-      {!isLoading && chartData.labels.length > 0 && (
-        <div className="mt-4 text-sm text-gray-500 text-right">
-          Showing {chartData.labels.length} items
-        </div>
-      )}
+        {/* Status messages and count - moved outside scroll container */}
+        {isLoading && (
+          <div className="flex items-center justify-center h-40">
+            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500"></div>
+          </div>
+        )}
+
+        {!isLoading && pendingData.length === 0 && (
+          <div className="text-center py-8 text-gray-500">
+            No pending data available
+          </div>
+        )}
+
+        {!isLoading && pendingData.length > 0 && (
+          <div className="mt-2 text-sm text-gray-500 text-right px-6 pb-2 bg-gray-50 border-t">
+            Showing {pendingData.length} items
+          </div>
+        )}
+      </div>
     </div>
   );
 };
 
-HorizontalBarChart.propTypes = {
-  title: PropTypes.string,
-  colors: PropTypes.arrayOf(PropTypes.string),
-  maxValue: PropTypes.number,
-};
-
-export default HorizontalBarChart;
+export default PendingWiseChart;
